@@ -969,12 +969,12 @@ function App() {
         )}
 
         {/* メインコンテンツエリア */}
-        <div className="flex-grow flex flex-col p-4 overflow-hidden">
+        <div className="flex-grow flex flex-col p-4 min-h-0">
           <div className="w-full max-w-7xl mx-auto h-full flex flex-col gap-4">
             {/* 字幕表示エリア */}
-            <div className="flex-grow flex gap-4">
+            <div className="flex-grow flex gap-4 min-h-0">
               {/* 文字起こし表示 */}
-              <div className={`${enableCorrection ? 'w-1/2' : 'w-full'} bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col`}>
+              <div className={`${enableCorrection ? 'w-1/2' : 'w-full'} bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col min-h-0`}>
                 {/* パネルヘッダー */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
                   <h2 className="text-white font-semibold text-lg">Live Transcription</h2>
@@ -999,7 +999,7 @@ function App() {
                 {/* 文字起こし表示エリア */}
                 <div 
                   ref={transcriptPanelRef}
-                  className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+                  className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 min-h-0"
                   style={{ overscrollBehavior: 'contain' }}
                 >
                   {transcriptions.length === 0 && isRecording && (
@@ -1032,14 +1032,14 @@ function App() {
               
               {/* 修正された文字起こし表示 */}
               {enableCorrection && (
-                <div className="w-1/2 bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col">
+                <div className="w-1/2 bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col min-h-0">
                   <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
                     <h2 className="text-white font-semibold text-lg">LLM Corrected</h2>
                   </div>
                   
                   <div 
                     ref={correctedPanelRef}
-                    className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+                    className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 min-h-0"
                     style={{ overscrollBehavior: 'contain' }}
                   >
                     {transcriptions.filter(t => t.is_final).map((trans, index) => {
@@ -1069,7 +1069,7 @@ function App() {
             
             {/* 要約表示枠 */}
             {summaryText && (
-              <div className="h-48 bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col">
+              <div className="h-48 bg-black bg-opacity-75 rounded-lg shadow-2xl flex flex-col flex-shrink-0">
                 <div className="flex items-center justify-between p-4 border-b border-gray-700 flex-shrink-0">
                   <h2 className="text-white font-semibold text-lg">Summary</h2>
                   <button
