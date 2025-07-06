@@ -16,6 +16,7 @@ from stt_openai import OpenAIWhisperProcessor
 from stt_whisperx import WhisperXProcessor
 import httpx
 from dotenv import load_dotenv
+import pynvml
 
 # .envファイルを読み込み
 load_dotenv()
@@ -64,6 +65,10 @@ class StatsResponse(BaseModel):
     status: str
     whisper_model: str
     whisper_device: str
+    gpu_vram_used_gb: float | None = None
+    gpu_vram_total_gb: float | None = None
+    gpu_vram_usage_percent: float | None = None
+    gpu_name: str | None = None
 
 @app.get("/")
 async def root():
@@ -189,12 +194,49 @@ async def get_stats():
     """
     接続統計情報を返すエンドポイント
     """
-    return StatsResponse(
-        active_connections=len(active_connections),
-        status="healthy",
-        whisper_model=os.getenv('WHISPER_MODEL', 'large-v3'),
-        whisper_device=os.getenv('WHISPER_DEVICE', 'cuda')
-    )
+    stats = {
+        "active_connections": len(active_connections),
+        "status": "healthy",
+        "whisper_model": os.getenv('WHISPER_MODEL', 'large-v3'),
+        "whisper_device": os.getenv('WHISPER_DEVICE', 'cuda')
+    }
+    
+    # GPU情報を取得（CUDAが利用可能な場合のみ）
+    if os.getenv('WHISPER_DEVICE', 'cuda') == 'cuda':
+        try:
+            # NVMLを初期化
+            pynvml.nvmlInit()
+            
+            # GPU 0の情報を取得（CUDA_VISIBLE_DEVICESで指定されたGPU）
+            gpu_index = int(os.getenv('CUDA_VISIBLE_DEVICES', '0'))
+            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+            
+            # GPU名を取得
+            gpu_name = pynvml.nvmlDeviceGetName(handle)
+            if isinstance(gpu_name, bytes):
+                gpu_name = gpu_name.decode('utf-8')
+            
+            # メモリ情報を取得
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            vram_used_gb = mem_info.used / (1024 ** 3)  # バイトからGBに変換
+            vram_total_gb = mem_info.total / (1024 ** 3)
+            vram_usage_percent = (mem_info.used / mem_info.total) * 100
+            
+            stats.update({
+                "gpu_vram_used_gb": round(vram_used_gb, 2),
+                "gpu_vram_total_gb": round(vram_total_gb, 2),
+                "gpu_vram_usage_percent": round(vram_usage_percent, 1),
+                "gpu_name": gpu_name
+            })
+            
+            # NVMLをクリーンアップ
+            pynvml.nvmlShutdown()
+            
+        except Exception as e:
+            logger.warning(f"Failed to get GPU stats: {e}")
+            # エラーが発生した場合はNoneのままにする
+    
+    return StatsResponse(**stats)
 
 @app.post("/api/summarize", response_model=SummarizeResponse)
 async def summarize(request: SummarizeRequest):

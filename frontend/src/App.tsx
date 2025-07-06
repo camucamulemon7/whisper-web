@@ -13,6 +13,10 @@ interface Stats {
   status: string;
   whisper_model: string;
   whisper_device: string;
+  gpu_vram_used_gb: number | null;
+  gpu_vram_total_gb: number | null;
+  gpu_vram_usage_percent: number | null;
+  gpu_name: string | null;
 }
 
 interface Parameters {
@@ -782,13 +786,47 @@ function App() {
                   )}
                 </div>
                 
-                {/* 同時接続数 */}
+                {/* 同時接続数とGPU情報 */}
                 {stats && (
-                  <div className={`text-sm ${
-                    darkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>
-                    <span>👥 Active connections: {stats.active_connections}</span>
-                  </div>
+                  <>
+                    <div className={`text-sm ${
+                      darkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
+                      <span>👥 Active connections: {stats.active_connections}</span>
+                    </div>
+                    {stats.gpu_vram_used_gb !== null && stats.gpu_vram_total_gb !== null && (
+                      <div className="text-sm flex items-center gap-2">
+                        <span>🎮</span>
+                        <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+                          {stats.gpu_name}:
+                        </span>
+                        <span className={`font-medium ${
+                          stats.gpu_vram_usage_percent! > 90 ? 'text-red-500' :
+                          stats.gpu_vram_usage_percent! > 70 ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`}>
+                          {stats.gpu_vram_used_gb}GB / {stats.gpu_vram_total_gb}GB
+                        </span>
+                        <div className="relative w-24 h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div 
+                            className={`absolute left-0 top-0 h-full transition-all duration-500 ${
+                              stats.gpu_vram_usage_percent! > 90 ? 'bg-red-500' :
+                              stats.gpu_vram_usage_percent! > 70 ? 'bg-yellow-500' :
+                              'bg-green-500'
+                            }`}
+                            style={{ width: `${stats.gpu_vram_usage_percent}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-medium ${
+                          stats.gpu_vram_usage_percent! > 90 ? 'text-red-500' :
+                          stats.gpu_vram_usage_percent! > 70 ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`}>
+                          {stats.gpu_vram_usage_percent}%
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
