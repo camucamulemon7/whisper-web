@@ -64,6 +64,7 @@ function App() {
   const [summaryText, setSummaryText] = useState('');
   const [isCorrectLoading, setIsCorrectLoading] = useState(false);
   const [showTimestamps, setShowTimestamps] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(true);  // 自動スクロールのON/OFF
   
   const wsRef = useRef<WebSocket | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -71,10 +72,9 @@ function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement>(null);
+  const correctedPanelRef = useRef<HTMLDivElement>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const correctionIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isUserScrolling = useRef(false);
-  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // WebSocket URLを環境変数から取得（デフォルト値あり）
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/stt';
@@ -135,33 +135,17 @@ function App() {
     return () => clearInterval(interval);
   }, [apiUrl]);
 
-  // 新しい文字起こしが追加されたら自動スクロール（ユーザーがスクロールしていない場合のみ）
+  // 新しい文字起こしが追加されたら自動スクロール（autoScrollがONの場合のみ）
   useEffect(() => {
-    if (transcriptPanelRef.current && !isUserScrolling.current) {
-      transcriptPanelRef.current.scrollTop = transcriptPanelRef.current.scrollHeight;
-    }
-  }, [transcriptions]);
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const element = e.currentTarget;
-    const isAtBottom = Math.abs(element.scrollHeight - element.scrollTop - element.clientHeight) < 10;
-    
-    if (!isAtBottom) {
-      isUserScrolling.current = true;
-      
-      // スクロールタイムアウトをクリア
-      if (scrollTimeout.current) {
-        clearTimeout(scrollTimeout.current);
+    if (autoScroll) {
+      if (transcriptPanelRef.current) {
+        transcriptPanelRef.current.scrollTop = transcriptPanelRef.current.scrollHeight;
       }
-      
-      // 3秒後に自動スクロールを再開
-      scrollTimeout.current = setTimeout(() => {
-        isUserScrolling.current = false;
-      }, 3000);
-    } else {
-      isUserScrolling.current = false;
+      if (correctedPanelRef.current) {
+        correctedPanelRef.current.scrollTop = correctedPanelRef.current.scrollHeight;
+      }
     }
-  };
+  }, [transcriptions, autoScroll]);
 
   const formatTime = (timestamp: number): string => {
     const date = new Date(timestamp);
@@ -756,8 +740,11 @@ function App() {
                       } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
                     >
                       <option value="faster-whisper">Faster Whisper</option>
-                      <option value="openai-whisper">OpenAI Whisper</option>
-                      <option value="whisperx">WhisperX 3.4.2</option>
+                      {/* 一時的に無効化 - コメントを外すと有効化されます */}
+                      {/* <option value="openai-whisper">OpenAI Whisper</option> */}
+                      {/* <option value="whisperx">WhisperX 3.4.2</option> */}
+                      <option value="openai-whisper" disabled className="text-gray-400">OpenAI Whisper (準備中)</option>
+                      <option value="whisperx" disabled className="text-gray-400">WhisperX 3.4.2 (準備中)</option>
                     </select>
                   </div>
                 </div>
@@ -963,6 +950,19 @@ function App() {
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                   )}
                 </div>
+                
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="auto-scroll"
+                    checked={autoScroll}
+                    onChange={(e) => setAutoScroll(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <label htmlFor="auto-scroll" className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    自動スクロール
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -999,8 +999,8 @@ function App() {
                 {/* 文字起こし表示エリア */}
                 <div 
                   ref={transcriptPanelRef}
-                  onScroll={handleScroll}
                   className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+                  style={{ overscrollBehavior: 'contain' }}
                 >
                   {transcriptions.length === 0 && isRecording && (
                     <p className="text-white text-center opacity-50 text-lg">
@@ -1038,8 +1038,9 @@ function App() {
                   </div>
                   
                   <div 
+                    ref={correctedPanelRef}
                     className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
-                    onScroll={handleScroll}
+                    style={{ overscrollBehavior: 'contain' }}
                   >
                     {transcriptions.filter(t => t.is_final).map((trans, index) => {
                       const corrected = correctedTranscriptions.get(trans.timestamp);
