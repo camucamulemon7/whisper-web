@@ -329,6 +329,14 @@ class TranscriptionProcessor:
         # セグメントを処理
         segment_count = 0
         current_time = time.time()
+        base_timestamp = int(current_time * 1000)  # ミリ秒に変換
+        
+        # 同じタイムスタンプのセグメントを結合
+        combined_segments = []
+        current_combined_text = ""
+        current_start = None
+        current_end = None
+        current_no_speech_prob = 1.0
         
         for segment in segments:
             segment_count += 1
@@ -344,22 +352,35 @@ class TranscriptionProcessor:
             if self._is_duplicate_or_similar(transcription_text):
                 continue
             
+            # セグメントを結合
+            if current_start is None:
+                current_start = segment.start
+            current_end = segment.end
+            current_no_speech_prob = min(current_no_speech_prob, segment.no_speech_prob)
+            
+            if current_combined_text:
+                current_combined_text += " " + transcription_text
+            else:
+                current_combined_text = transcription_text
+        
+        # 結合されたテキストがある場合は送信
+        if current_combined_text:
             # 履歴に追加
-            self.transcription_history.append(transcription_text)
+            self.transcription_history.append(current_combined_text)
             
             transcription = {
-                "text": transcription_text,
-                "start": segment.start,
-                "end": segment.end,
-                "is_final": segment.no_speech_prob < self.no_speech_threshold,
-                "timestamp": int(current_time * 1000)  # ミリ秒に変換
+                "text": current_combined_text,
+                "start": current_start or 0.0,
+                "end": current_end or (len(audio_data) / 16000.0),
+                "is_final": current_no_speech_prob < self.no_speech_threshold,
+                "timestamp": base_timestamp
             }
             
             self.result_queue.put(transcription)
-            logger.info(f"Transcribed: {transcription['text']}")
+            logger.info(f"Transcribed (combined): {transcription['text']}")
             
             # 最後の文字起こしを更新
-            self.last_transcription = transcription_text
+            self.last_transcription = current_combined_text
             self.last_transcription_time = current_time
         
         if segment_count == 0:

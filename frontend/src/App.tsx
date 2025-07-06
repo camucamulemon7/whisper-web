@@ -73,6 +73,8 @@ function App() {
   const transcriptPanelRef = useRef<HTMLDivElement>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const correctionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isUserScrolling = useRef(false);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // WebSocket URLを環境変数から取得（デフォルト値あり）
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/stt';
@@ -133,12 +135,33 @@ function App() {
     return () => clearInterval(interval);
   }, [apiUrl]);
 
-  // 新しい文字起こしが追加されたら自動スクロール
+  // 新しい文字起こしが追加されたら自動スクロール（ユーザーがスクロールしていない場合のみ）
   useEffect(() => {
-    if (transcriptPanelRef.current) {
+    if (transcriptPanelRef.current && !isUserScrolling.current) {
       transcriptPanelRef.current.scrollTop = transcriptPanelRef.current.scrollHeight;
     }
   }, [transcriptions]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    const isAtBottom = Math.abs(element.scrollHeight - element.scrollTop - element.clientHeight) < 10;
+    
+    if (!isAtBottom) {
+      isUserScrolling.current = true;
+      
+      // スクロールタイムアウトをクリア
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+      
+      // 3秒後に自動スクロールを再開
+      scrollTimeout.current = setTimeout(() => {
+        isUserScrolling.current = false;
+      }, 3000);
+    } else {
+      isUserScrolling.current = false;
+    }
+  };
 
   const formatTime = (timestamp: number): string => {
     const date = new Date(timestamp);
@@ -366,6 +389,28 @@ function App() {
         console.log('Received transcription:', transcription);
         
         setTranscriptions(prev => {
+          // 同じタイムスタンプの文字起こしがある場合は結合
+          const existingIndex = prev.findIndex(t => 
+            t.timestamp === transcription.timestamp && t.is_final === transcription.is_final
+          );
+          
+          if (existingIndex !== -1) {
+            // 同じタイムスタンプのものがある場合は結合
+            const newTranscriptions = [...prev];
+            const existing = newTranscriptions[existingIndex];
+            
+            // テキストが異なる場合のみ結合
+            if (existing.text !== transcription.text && !existing.text.includes(transcription.text)) {
+              newTranscriptions[existingIndex] = {
+                ...existing,
+                text: existing.text + ' ' + transcription.text,
+                end: Math.max(existing.end, transcription.end)
+              };
+              console.log('Merged transcription:', newTranscriptions[existingIndex]);
+            }
+            return newTranscriptions;
+          }
+          
           // 重複チェック（同じテキストが既に存在する場合はスキップ）
           const isDuplicate = prev.some(t => 
             t.text === transcription.text && 
@@ -954,6 +999,7 @@ function App() {
                 {/* 文字起こし表示エリア */}
                 <div 
                   ref={transcriptPanelRef}
+                  onScroll={handleScroll}
                   className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
                 >
                   {transcriptions.length === 0 && isRecording && (
@@ -991,7 +1037,10 @@ function App() {
                     <h2 className="text-white font-semibold text-lg">LLM Corrected</h2>
                   </div>
                   
-                  <div className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+                  <div 
+                    className="flex-grow p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+                    onScroll={handleScroll}
+                  >
                     {transcriptions.filter(t => t.is_final).map((trans, index) => {
                       const corrected = correctedTranscriptions.get(trans.timestamp);
                       return (
