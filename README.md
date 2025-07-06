@@ -64,8 +64,7 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
 1. Clone the repo and navigate into the project directory:  
    ```bash
    cd whisper
-````
-
+   ```
 2. Configure environment variables:
 
    ```bash
@@ -213,6 +212,5 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
 * High concurrency may increase latency
 
 ## License
-
 Released under the MIT License.
 See each library’s documentation for individual licenses.
