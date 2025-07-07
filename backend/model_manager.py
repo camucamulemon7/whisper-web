@@ -108,7 +108,22 @@ class ModelManager:
                 )
                 # モデルを一度推論して初期化を完了させる
                 logger.info("Warming up faster-whisper model...")
-                list(model.transcribe([0.0] * 16000, beam_size=1))
+                try:
+                    import numpy as np
+                    # 1秒分の無音データをNumPy配列として作成
+                    silence_audio = np.zeros(16000, dtype=np.float32)
+                    segments, _ = model.transcribe(
+                        silence_audio, 
+                        beam_size=1,
+                        language="en",  # 言語を指定して自動検出をスキップ
+                        vad_filter=False  # VADを無効化して高速化
+                    )
+                    # ジェネレーターを消費
+                    _ = list(segments)
+                    logger.info("Warm-up completed successfully")
+                except Exception as e:
+                    logger.warning(f"Warm-up failed, but model is still usable: {e}")
+                
                 return model
                 
             elif backend_type == 'openai-whisper':
@@ -123,6 +138,17 @@ class ModelManager:
                     device=device,
                     download_root="/app/models"
                 )
+                
+                # ウォームアップ
+                logger.info("Warming up OpenAI Whisper model...")
+                try:
+                    import numpy as np
+                    silence_audio = np.zeros(16000, dtype=np.float32)
+                    _ = model.transcribe(silence_audio, language="en", fp16=False)
+                    logger.info("Warm-up completed successfully")
+                except Exception as e:
+                    logger.warning(f"Warm-up failed, but model is still usable: {e}")
+                
                 return model
                 
             elif backend_type == 'whisperx':
@@ -139,6 +165,17 @@ class ModelManager:
                     compute_type=compute_type,
                     download_root="/app/models"
                 )
+                
+                # ウォームアップ
+                logger.info("Warming up WhisperX model...")
+                try:
+                    import numpy as np
+                    silence_audio = np.zeros(16000, dtype=np.float32)
+                    _ = model.transcribe(silence_audio, batch_size=1)
+                    logger.info("Warm-up completed successfully")
+                except Exception as e:
+                    logger.warning(f"Warm-up failed, but model is still usable: {e}")
+                
                 return model
             else:
                 logger.error(f"Unknown backend type: {backend_type}")

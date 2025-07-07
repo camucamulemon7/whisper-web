@@ -52,6 +52,7 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
 - **Bottom summary display area**
 - **Model sharing** for efficient GPU memory usage
 - **Real-time GPU VRAM usage monitoring**
+- **Usage logging** for session tracking and analytics
 
 ## Requirements
 

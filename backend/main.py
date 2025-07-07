@@ -7,7 +7,8 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, Set
+from typing import Dict, Set, Any
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -39,6 +40,18 @@ app.add_middleware(
 
 # アクティブなWebSocket接続を管理
 active_connections: Set[WebSocket] = set()
+
+# セッション情報を管理（接続IDとセッション開始時刻）
+class SessionInfo:
+    def __init__(self, connection_id: str, start_time: datetime):
+        self.connection_id = connection_id
+        self.start_time = start_time
+        self.audio_source = "unknown"
+        self.language = "auto"
+        self.backend = "faster-whisper"
+
+# WebSocketとセッション情報のマッピング
+session_map: Dict[WebSocket, SessionInfo] = {}
 
 # Pydanticモデル
 class SummarizeRequest(BaseModel):
@@ -87,7 +100,15 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     active_connections.add(websocket)
-    logger.info(f"New WebSocket connection. Total connections: {len(active_connections)}")
+    
+    # セッション情報を作成
+    connection_id = f"{websocket.client.host}:{websocket.client.port}-{int(datetime.now().timestamp())}"
+    session_start_time = datetime.now()
+    session_info = SessionInfo(connection_id, session_start_time)
+    session_map[websocket] = session_info
+    
+    # セッション開始をログ
+    logger.info(f"SESSION_START | connection_id={connection_id} | start_time={session_start_time.isoformat()} | total_connections={len(active_connections)}")
     
     # 文字起こしプロセッサーの初期化（デフォルトでfaster-whisper）
     processor = None
@@ -116,6 +137,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     # 言語設定を更新
                     language = data.get("language")
                     processor.set_language(language)
+                    
+                    # セッション情報を更新
+                    if websocket in session_map:
+                        session_map[websocket].language = language or 'auto'
+                    
                     logger.info(f"Language set to: {language or 'auto'}")
                     
                     # バックエンドの変更が要求された場合
@@ -145,6 +171,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             backend_type = 'faster-whisper'
                             logger.info("Switched to Faster Whisper backend")
                         
+                        # セッション情報を更新
+                        if websocket in session_map:
+                            session_map[websocket].backend = backend_type
+                        
                         # 言語設定を再適用
                         processor.set_language(language)
                     
@@ -154,6 +184,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         processor.update_parameters(parameters)
                         logger.info(f"Updated parameters: {parameters}")
                     
+                    continue
+                elif data.get("type") == "audio_source":
+                    # 音声ソース情報を受信
+                    audio_source = data.get("source", "unknown")
+                    if websocket in session_map:
+                        session_map[websocket].audio_source = audio_source
+                    logger.info(f"Audio source set to: {audio_source}")
                     continue
             
             elif "bytes" in message:
@@ -181,6 +218,25 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"Error in WebSocket connection: {e}")
     finally:
+        # セッション終了のログ
+        if websocket in session_map:
+            session_info = session_map[websocket]
+            session_end_time = datetime.now()
+            session_duration = (session_end_time - session_info.start_time).total_seconds()
+            
+            # セッションサマリーをログ
+            logger.info(
+                f"SESSION_END | connection_id={session_info.connection_id} | "
+                f"end_time={session_end_time.isoformat()} | "
+                f"duration_seconds={session_duration:.2f} | "
+                f"audio_source={session_info.audio_source} | "
+                f"language={session_info.language} | "
+                f"backend={session_info.backend}"
+            )
+            
+            # セッション情報を削除
+            del session_map[websocket]
+        
         # クリーンアップ
         if websocket in active_connections:
             active_connections.remove(websocket)

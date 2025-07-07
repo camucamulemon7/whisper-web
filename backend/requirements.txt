@@ -5,7 +5,7 @@ faster-whisper==1.1.1
 openai-whisper==20250625
 # whisperx==3.4.2  # Temporarily disabled due to dependency conflicts
 # torch is installed in Dockerfile with CUDA support
-numpy==1.26.4
+numpy>=1.24.0,<2.0.0
 pydantic==2.10.3
 python-multipart==0.0.17
 httpx==0.27.2

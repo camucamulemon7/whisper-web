@@ -382,6 +382,11 @@ function App() {
           backend: whisperBackend,
           parameters: parameters
         }));
+        // 音声ソース情報を送信
+        ws.send(JSON.stringify({
+          type: 'audio_source',
+          source: audioSource
+        }));
       };
 
       ws.onmessage = (event) => {

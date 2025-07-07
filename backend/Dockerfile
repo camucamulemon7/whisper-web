@@ -30,7 +30,7 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install torch==2.1.2+cu121 torchvision==0.16.2+cu121 torchaudio==2.1.2+cu121 --index-url https://download.pytorch.org/whl/cu121 && \
+    python3 -m pip install torch==2.3.0+cu121 torchvision==0.18.0+cu121 torchaudio==2.3.0+cu121 --index-url https://download.pytorch.org/whl/cu121 && \
     python3 -m pip install -r requirements.txt
 
 # Install WhisperX (with dependencies)
