@@ -16,6 +16,7 @@ from stt_openai import OpenAIWhisperProcessor
 from stt_whisperx import WhisperXProcessor
 import httpx
 from dotenv import load_dotenv
+from model_manager import model_manager
 import pynvml
 
 # .envファイルを読み込み
@@ -69,6 +70,7 @@ class StatsResponse(BaseModel):
     gpu_vram_total_gb: float | None = None
     gpu_vram_usage_percent: float | None = None
     gpu_name: str | None = None
+    model_sharing: Dict[str, Any] | None = None
 
 @app.get("/")
 async def root():
@@ -247,6 +249,9 @@ async def get_stats():
             logger.error(traceback.format_exc())
     else:
         logger.info(f"GPU stats not available - device is '{device}', not 'cuda'")
+    
+    # モデル共有情報を追加
+    stats["model_sharing"] = model_manager.get_stats()
     
     return StatsResponse(**stats)
 

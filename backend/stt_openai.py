@@ -14,6 +14,7 @@ import threading
 import queue
 import whisper
 import torch
+from model_manager import model_manager
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +28,15 @@ class OpenAIWhisperProcessor:
         環境変数から設定を読み込んで初期化
         """
         self.language = None  # None = 自動検出
+        self.model = None  # モデルは必要時に取得
+        self.backend_type = 'openai-whisper'
         
         # 環境変数から設定を読み込み
         self.model_size = os.getenv('WHISPER_MODEL', 'large-v3')
         self.device = os.getenv('WHISPER_DEVICE', 'cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Whisperモデルの初期化
-        logger.info(f"Loading OpenAI Whisper model: {self.model_size} on {self.device}")
-        try:
-            self.model = whisper.load_model(self.model_size, device=self.device)
-            logger.info(f"Model loaded successfully on {self.device}")
-        except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            raise
+        # モデルの初期化は廃止（必要時に取得）
+        logger.info(f"OpenAIWhisperProcessor initialized (model will be loaded on demand)")
         
         # 音声バッファ（15秒分のPCMデータを保持）
         self.audio_buffer = deque(maxlen=15 * 16000)  # 15秒 * 16kHz
@@ -71,6 +68,14 @@ class OpenAIWhisperProcessor:
         self.last_audio_time = time.time()
         
         logger.info("OpenAIWhisperProcessor initialized")
+    
+    async def _get_model(self):
+        """
+        モデルマネージャーからモデルを取得
+        """
+        if self.model is None:
+            self.model = await model_manager.get_model(self.backend_type)
+        return self.model
     
     def _process_audio_thread(self):
         """
@@ -161,6 +166,18 @@ class OpenAIWhisperProcessor:
             logger.warning(f"Buffer too small for transcription: {len(self.audio_buffer)} samples")
             return
         
+        # モデルを取得（非同期関数を同期的に呼び出す）
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            model = loop.run_until_complete(self._get_model())
+        finally:
+            loop.close()
+        
+        if model is None:
+            logger.error("Failed to get model")
+            return
+        
         # バッファから音声データを取得（最大10秒）
         audio_data = np.array(list(self.audio_buffer))
         logger.info(f"Transcribing audio: {len(audio_data)} samples")
@@ -172,7 +189,7 @@ class OpenAIWhisperProcessor:
         
         try:
             # OpenAI Whisperで文字起こし
-            result = self.model.transcribe(
+            result = model.transcribe(
                 audio_data,
                 language=self.language,
                 temperature=0.0,
@@ -284,5 +301,10 @@ class OpenAIWhisperProcessor:
         # 処理スレッドを停止
         self.audio_queue.put(None)
         self.processing_thread.join(timeout=5)
+        
+        # モデルをリリース
+        if self.model is not None:
+            await model_manager.release_model(self.backend_type)
+            self.model = None
         
         logger.info("OpenAIWhisperProcessor cleaned up")

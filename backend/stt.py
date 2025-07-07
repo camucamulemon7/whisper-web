@@ -16,6 +16,7 @@ import queue
 from faster_whisper import WhisperModel
 import struct
 from difflib import SequenceMatcher
+from model_manager import model_manager
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ class TranscriptionProcessor:
         環境変数から設定を読み込んで初期化
         """
         self.language = None  # None = 自動検出
+        self.model = None  # モデルは必要時に取得
+        self.backend_type = 'faster-whisper'
+        
         # 環境変数から設定を読み込み
         self.model_size = os.getenv('WHISPER_MODEL', 'large-v3')
         self.device = os.getenv('WHISPER_DEVICE', 'cuda')
@@ -68,33 +72,8 @@ class TranscriptionProcessor:
         self.vad_threshold = float(os.getenv('WHISPER_VAD_THRESHOLD', '0.5'))  # VADの闾値
         self.use_silero_vad = os.getenv('WHISPER_USE_SILERO_VAD', 'true').lower() == 'true'  # Silero VADを使用
         
-        # Whisperモデルの初期化
-        logger.info(f"Loading Whisper model: {self.model_size} on {self.device}")
-        try:
-            # GPUでモデルをロード
-            logger.info("Attempting to load model on GPU...")
-            self.model = WhisperModel(
-                self.model_size, 
-                device=self.device, 
-                compute_type=self.compute_type,
-                download_root="/app/models"
-            )
-            logger.info("Model loaded successfully on GPU")
-        except Exception as e:
-            logger.warning(f"Failed to load model on {self.device}: {e}. Falling back to CPU.")
-            self.device = "cpu"
-            self.compute_type = "int8"
-            try:
-                self.model = WhisperModel(
-                    self.model_size, 
-                    device="cpu", 
-                    compute_type="int8",
-                    download_root="/app/models"
-                )
-                logger.info("Model loaded successfully on CPU")
-            except Exception as e2:
-                logger.error(f"Failed to load model on CPU: {e2}")
-                raise
+        # モデルの初期化は廃止（必要時に取得）
+        logger.info(f"TranscriptionProcessor initialized (model will be loaded on demand)")
         
         # 音声バッファ（15秒分のPCMデータを保持）
         self.audio_buffer = deque(maxlen=15 * 16000)  # 15秒 * 16kHz
@@ -130,6 +109,14 @@ class TranscriptionProcessor:
         self.last_audio_time = time.time()  # 最後に音声を受信した時刻
         
         logger.info("TranscriptionProcessor initialized with optimized settings")
+    
+    async def _get_model(self):
+        """
+        モデルマネージャーからモデルを取得
+        """
+        if self.model is None:
+            self.model = await model_manager.get_model(self.backend_type)
+        return self.model
     
     def _process_audio_thread(self):
         """
@@ -267,6 +254,18 @@ class TranscriptionProcessor:
             logger.warning(f"Buffer too small for transcription: {len(self.audio_buffer)} samples")
             return
         
+        # モデルを取得（非同期関数を同期的に呼び出す）
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            model = loop.run_until_complete(self._get_model())
+        finally:
+            loop.close()
+        
+        if model is None:
+            logger.error("Failed to get model")
+            return
+        
         # バッファから音声データを取得（最大10秒）
         audio_data = np.array(list(self.audio_buffer))
         logger.info(f"Transcribing audio: {len(audio_data)} samples, max amplitude: {np.max(np.abs(audio_data))}")
@@ -303,7 +302,7 @@ class TranscriptionProcessor:
             if hasattr(self, 'vad_threshold'):
                 vad_params["threshold"] = self.vad_threshold
             
-            segments, info = self.model.transcribe(
+            segments, info = model.transcribe(
                 audio_data,
                 language=self.language,  # None = 自動検出, 'ja' = 日本語, 'en' = 英語
                 task="transcribe",
@@ -475,5 +474,10 @@ class TranscriptionProcessor:
         # 処理スレッドを停止
         self.audio_queue.put(None)
         self.processing_thread.join(timeout=5)
+        
+        # モデルをリリース
+        if self.model is not None:
+            await model_manager.release_model(self.backend_type)
+            self.model = None
         
         logger.info("TranscriptionProcessor cleaned up")

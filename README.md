@@ -47,9 +47,11 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
 - **Clear transcription** feature  
 - **Timestamp display** feature  
 - **Advanced parameter settings** (prompt, beam size, chunk size, etc.)  
-- **LLM-based typo correction** (auto every 5 minutes)  
-- **LLM-based summarization**  
-- **Bottom summary display area**  
+- **LLM-based typo correction** (auto every 5 minutes)
+- **LLM-based summarization**
+- **Bottom summary display area**
+- **Model sharing** for efficient GPU memory usage
+- **Real-time GPU VRAM usage monitoring**
 
 ## Requirements
 
@@ -118,6 +120,14 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
   * Other settings
 
 ## Architecture
+
+### Model Sharing System
+
+The application uses a singleton model manager to share Whisper models across multiple connections:
+- **Efficient memory usage**: Only one model instance per backend type
+- **Automatic cleanup**: Idle models are released after 5 minutes
+- **Active user tracking**: Monitor how many users are using each model
+- **Dynamic loading**: Models are loaded on-demand when first needed
 
 ### Frontend
 

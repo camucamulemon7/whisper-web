@@ -17,6 +17,17 @@ interface Stats {
   gpu_vram_total_gb: number | null;
   gpu_vram_usage_percent: number | null;
   gpu_name: string | null;
+  model_sharing: {
+    loaded_models: Array<{
+      backend: string;
+      loaded_at: string;
+      last_used: string;
+      active_users: number;
+      usage_count: number;
+    }>;
+    total_active_users: number;
+    total_usage_count: number;
+  } | null;
 }
 
 interface Parameters {
@@ -824,6 +835,15 @@ function App() {
                           'text-green-500'
                         }`}>
                           {stats.gpu_vram_usage_percent}%
+                        </span>
+                      </div>
+                    )}
+                    {stats.model_sharing && stats.model_sharing.loaded_models.length > 0 && (
+                      <div className="text-sm flex items-center gap-2">
+                        <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+                          📀 Models: {stats.model_sharing.loaded_models.map(m => 
+                            `${m.backend} (${m.active_users} users)`
+                          ).join(', ')}
                         </span>
                       </div>
                     )}
