@@ -124,6 +124,7 @@ function App() {
       try {
         const response = await fetch(`${apiUrl}/stats`);
         const data = await response.json();
+        console.log('Stats received:', data);
         setStats(data);
       } catch (error) {
         console.error('Failed to fetch stats:', error);

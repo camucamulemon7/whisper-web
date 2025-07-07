@@ -2,7 +2,7 @@ fastapi==0.115.5
 uvicorn[standard]==0.32.1
 websockets==13.1
 faster-whisper==1.1.1
-openai-whisper==20250626
+openai-whisper==20250625
 # whisperx==3.4.2  # Temporarily disabled due to dependency conflicts
 # torch is installed in Dockerfile with CUDA support
 numpy==1.26.4

@@ -202,14 +202,18 @@ async def get_stats():
     }
     
     # GPU情報を取得（CUDAが利用可能な場合のみ）
-    if os.getenv('WHISPER_DEVICE', 'cuda') == 'cuda':
+    device = os.getenv('WHISPER_DEVICE', 'cuda')
+    logger.info(f"Checking GPU stats for device: {device}")
+    
+    if device == 'cuda':
         try:
+            logger.info("Attempting to get GPU information...")
             # NVMLを初期化
             pynvml.nvmlInit()
             
-            # GPU 0の情報を取得（CUDA_VISIBLE_DEVICESで指定されたGPU）
-            gpu_index = int(os.getenv('CUDA_VISIBLE_DEVICES', '0'))
-            handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+            # GPU 0の情報を取得
+            # Docker内ではCUDA_VISIBLE_DEVICESに関係なく、常にindex 0を使用
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             
             # GPU名を取得
             gpu_name = pynvml.nvmlDeviceGetName(handle)
@@ -229,12 +233,20 @@ async def get_stats():
                 "gpu_name": gpu_name
             })
             
+            logger.info(f"GPU stats retrieved successfully: {gpu_name}, {vram_used_gb:.2f}/{vram_total_gb:.2f}GB ({vram_usage_percent:.1f}%)")
+            
             # NVMLをクリーンアップ
             pynvml.nvmlShutdown()
             
+        except pynvml.NVMLError as e:
+            logger.error(f"NVML Error getting GPU stats: {e}")
+            logger.error(f"NVML Error code: {e.value if hasattr(e, 'value') else 'unknown'}")
         except Exception as e:
-            logger.warning(f"Failed to get GPU stats: {e}")
-            # エラーが発生した場合はNoneのままにする
+            logger.error(f"Unexpected error getting GPU stats: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    else:
+        logger.info(f"GPU stats not available - device is '{device}', not 'cuda'")
     
     return StatsResponse(**stats)
 
