@@ -390,7 +390,16 @@ function App() {
       };
 
       ws.onmessage = (event) => {
-        const transcription: Transcription = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
+        
+        // エラーメッセージの処理
+        if (data.error) {
+          console.error('Backend error:', data.error, data.message);
+          alert(`Error: ${data.error}\n${data.message || ''}`);
+          return;
+        }
+        
+        const transcription: Transcription = data;
         console.log('Received transcription:', transcription);
         
         setTranscriptions(prev => {
@@ -761,11 +770,8 @@ function App() {
                       } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
                     >
                       <option value="faster-whisper">Faster Whisper</option>
-                      {/* 一時的に無効化 - コメントを外すと有効化されます */}
-                      {/* <option value="openai-whisper">OpenAI Whisper</option> */}
-                      {/* <option value="whisperx">WhisperX 3.4.2</option> */}
-                      <option value="openai-whisper" disabled className="text-gray-400">OpenAI Whisper (準備中)</option>
-                      <option value="whisperx" disabled className="text-gray-400">WhisperX 3.4.2 (準備中)</option>
+                      <option value="openai-whisper" disabled className="text-gray-400">OpenAI Whisper (Not Installed)</option>
+                      <option value="whisperx" disabled className="text-gray-400">WhisperX 3.4.2 (Not Installed)</option>
                     </select>
                   </div>
                 </div>

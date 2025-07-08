@@ -13,8 +13,17 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from stt import TranscriptionProcessor
-from stt_openai import OpenAIWhisperProcessor
-from stt_whisperx import WhisperXProcessor
+
+# Optional imports
+try:
+    from stt_openai import OpenAIWhisperProcessor
+except ImportError:
+    OpenAIWhisperProcessor = None
+    
+try:
+    from stt_whisperx import WhisperXProcessor
+except ImportError:
+    WhisperXProcessor = None
 import httpx
 from dotenv import load_dotenv
 from model_manager import model_manager
@@ -152,10 +161,24 @@ async def websocket_endpoint(websocket: WebSocket):
                         
                         # 新しいプロセッサーを作成
                         if new_backend == 'openai-whisper':
+                            if OpenAIWhisperProcessor is None:
+                                logger.error("OpenAI Whisper is not installed. Please enable it in requirements.txt and rebuild.")
+                                await websocket.send_json({
+                                    "error": "OpenAI Whisper is not installed",
+                                    "message": "Please enable openai-whisper in requirements.txt and rebuild the Docker image"
+                                })
+                                continue
                             processor = OpenAIWhisperProcessor()
                             backend_type = 'openai-whisper'
                             logger.info("Switched to OpenAI Whisper backend")
                         elif new_backend == 'whisperx':
+                            if WhisperXProcessor is None:
+                                logger.error("WhisperX is not installed. Please enable it in requirements.txt and rebuild.")
+                                await websocket.send_json({
+                                    "error": "WhisperX is not installed",
+                                    "message": "Please enable whisperx in requirements.txt and rebuild the Docker image"
+                                })
+                                continue
                             # WhisperXのサポート
                             try:
                                 processor = WhisperXProcessor()
@@ -246,6 +269,31 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error during cleanup: {e}")
         logger.info(f"Connection closed. Remaining connections: {len(active_connections)}")
+
+@app.get("/api/backends")
+async def get_available_backends():
+    """
+    利用可能なバックエンドを返す
+    """
+    backends = {
+        "faster-whisper": {
+            "available": True,  # Always available (default)
+            "name": "Faster Whisper",
+            "description": "Fast and efficient"
+        },
+        "openai-whisper": {
+            "available": OpenAIWhisperProcessor is not None,
+            "name": "OpenAI Whisper",
+            "description": "Original implementation"
+        },
+        "whisperx": {
+            "available": WhisperXProcessor is not None,
+            "name": "WhisperX 3.4.2",
+            "description": "High precision with speaker separation"
+        }
+    }
+    
+    return backends
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats():

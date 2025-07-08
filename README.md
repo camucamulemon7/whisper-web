@@ -76,11 +76,39 @@ A system that captures browser-tab audio (e.g. Webex) in real time and displays 
    ```
 3. Start with Docker Compose:
 
+   ### Quick Start (Development - Fast Build)
+   ```bash
+   # Windows
+   build-fast.bat
+   docker compose up
+   
+   # Linux/Mac
+   chmod +x build-fast.sh
+   ./build-fast.sh
+   docker compose up
+   ```
+
+   ### Standard Build (Production)
    ```bash
    docker compose up --build
    ```
 
    > First run may take time to download Whisper models (\~3 GB).
+
+### Optional: Enable Additional Backends
+
+By default, only `faster-whisper` is enabled. To use other backends:
+
+```bash
+# Enable OpenAI Whisper
+python manage-backends.py enable openai
+
+# Enable WhisperX  
+python manage-backends.py enable whisperx
+
+# Rebuild
+docker compose build
+```
 4. Open your browser at `http://localhost:5173`
 5. Click **Start Caption**
 6. Select the tab to share (e.g. Webex) and check **Share audio**
