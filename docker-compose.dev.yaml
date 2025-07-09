@@ -1,13 +1,10 @@
 services:
   backend:
-    # Use pre-built image from GitHub Container Registry
-    image: ghcr.io/camucamulemon7/whisper:1.4.0
-    
-    # For local development, uncomment the following lines:
-    # image: whisper-backend:latest
-    # build:
-    #   context: ./backend
-    #   dockerfile: ${DOCKERFILE:-Dockerfile}
+    # Local development build
+    image: whisper-backend:latest
+    build:
+      context: ./backend
+      dockerfile: ${DOCKERFILE:-Dockerfile.dev}
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
     deploy:
@@ -26,12 +23,9 @@ services:
     env_file:
       - .env
     volumes:
-      # Mount models directory to persist downloaded models
+      - ./backend:/app
       - whisper-models:/app/models
-      # For development, you can also mount the source code:
-      # - ./backend:/app
-    # Development command with hot reload:
-    # command: uvicorn main:app --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8000} --reload
+    command: uvicorn main:app --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8000} --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${API_PORT:-8000}/"]
       interval: 30s
@@ -42,22 +36,18 @@ services:
       - whisper-network
 
   frontend:
-    # Use pre-built image from GitHub Container Registry
-    image: ghcr.io/camucamulemon7/whisper-frontend:1.4.0
-    
-    # For local development, uncomment the following lines:
-    # image: whisper-frontend:latest
-    # build: ./frontend
+    # Local development build
+    image: whisper-frontend:latest
+    build: ./frontend
     ports:
       - "5173:5173"
     env_file:
       - .env
     depends_on:
       - backend
-    # For development, you can mount the source code:
-    # volumes:
-    #   - ./frontend:/app
-    #   - /app/node_modules
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     networks:
       - whisper-network
 
