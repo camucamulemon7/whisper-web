@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface Transcription {
   text: string;
@@ -42,6 +42,14 @@ interface Parameters {
   no_speech_threshold: number;
 }
 
+// Chromium capture hints are not included in TypeScript's DOM declarations.
+interface TabCaptureOptions extends DisplayMediaStreamOptions {
+  video?: boolean | (MediaTrackConstraints & { cursor?: 'never' });
+  audio?: boolean | (MediaTrackConstraints & { suppressLocalAudioPlayback?: boolean });
+  preferCurrentTab?: boolean;
+  systemAudio?: 'include' | 'exclude';
+}
+
 type AudioSource = 'screen' | 'microphone' | 'both';
 type Language = 'auto' | 'ja' | 'en';
 
@@ -53,7 +61,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [summary, setSummary] = useState('');
+  const [summary] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [darkMode, setDarkMode] = useState(() => {
@@ -88,8 +96,8 @@ function App() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement>(null);
   const correctedPanelRef = useRef<HTMLDivElement>(null);
-  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const correctionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const correctionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // WebSocket URLを環境変数から取得（デフォルト値あり）
   const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/stt';
@@ -267,7 +275,7 @@ function App() {
     try {
       // 画面音声の取得
       if (audioSource === 'screen' || audioSource === 'both') {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        const captureOptions: TabCaptureOptions = {
           video: {
             cursor: 'never'  // カーソルを除外
           },
@@ -280,7 +288,8 @@ function App() {
           },
           preferCurrentTab: false,  // 現在のタブを優先しない（すべてのオプションを表示）
           systemAudio: 'include'  // システム音声を含める
-        });
+        };
+        const displayStream = await navigator.mediaDevices.getDisplayMedia(captureOptions);
         
         // 選択したソースの情報をログに出力
         const videoTrack = displayStream.getVideoTracks()[0];
@@ -373,6 +382,7 @@ function App() {
       
       // 接続時に言語設定を送信
       ws.onopen = () => {
+        if (wsRef.current !== ws) return;
         console.log('WebSocket connected');
         setConnectionStatus('connected');
         // 言語設定とバックエンド設定を送信
@@ -390,6 +400,7 @@ function App() {
       };
 
       ws.onmessage = (event) => {
+        if (wsRef.current !== ws) return;
         const data = JSON.parse(event.data);
         
         // エラーメッセージの処理
@@ -457,12 +468,12 @@ function App() {
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
-        setConnectionStatus('disconnected');
+        if (wsRef.current === ws) stopRecording();
       };
 
       ws.onclose = () => {
         console.log('WebSocket closed');
-        setConnectionStatus('disconnected');
+        if (wsRef.current === ws) stopRecording();
       };
 
       // Web Audio APIで音声を処理
@@ -576,6 +587,7 @@ function App() {
       console.log(`Audio processing started with source: ${audioSource}`);
 
     } catch (error) {
+      stopRecording();
       console.error('Error starting recording:', error);
       
       let errorMessage = 'Failed to start recording. ';
@@ -636,31 +648,43 @@ function App() {
   };
   
   const stopRecording = () => {
-    if (processorRef.current) {
-      // @ts-ignore
-      if (processorRef.current.intervalId) {
-        // @ts-ignore
-        clearInterval(processorRef.current.intervalId);
-      }
-      processorRef.current.disconnect();
-    }
-    
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
-
-    if (wsRef.current) {
-      wsRef.current.close();
+    // Clear references before closing so late socket events cannot stop a retry.
+    const processor = processorRef.current;
+    processorRef.current = null;
+    if (processor) {
+      const intervalId = (processor as ScriptProcessorNode & {
+        intervalId?: ReturnType<typeof setInterval>;
+      }).intervalId;
+      if (intervalId !== undefined) clearInterval(intervalId);
+      processor.onaudioprocess = null;
+      processor.disconnect();
     }
 
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach(track => track.stop());
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext) void audioContext.close();
+
+    const ws = wsRef.current;
+    wsRef.current = null;
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
     }
 
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(track => track.stop());
+    for (const streamRef of [screenStreamRef, micStreamRef]) {
+      const stream = streamRef.current;
+      streamRef.current = null;
+      stream?.getTracks().forEach(track => track.stop());
     }
 
+    if (silenceTimeoutRef.current !== null) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    setIsSilent(false);
     setIsRecording(false);
     setConnectionStatus('disconnected');
   };
@@ -1207,7 +1231,7 @@ function App() {
       </div>
 
       {/* Tailwindのアニメーション用スタイル */}
-      <style jsx>{`
+      <style>{`
         @keyframes fade-in-out {
           0% { opacity: 0; transform: translateY(-10px); }
           20% { opacity: 1; transform: translateY(0); }

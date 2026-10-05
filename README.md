@@ -253,3 +253,37 @@ The application uses a singleton model manager to share Whisper models across mu
 ## License
 Released under the MIT License.
 See each library’s documentation for individual licenses.
+## Development checks
+
+The WebSocket lifecycle tests use mocked transcription processors and do not
+require a GPU, model downloads, or an LLM API key. With Python 3.11 or newer:
+
+```bash
+python -m pip install fastapi==0.115.5 pydantic==2.10.3 httpx==0.27.2 python-dotenv==1.0.1 nvidia-ml-py==12.560.30
+python -m unittest discover -s tests -v
+```
+
+Build the frontend with its existing production command:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+Optional headless browser regressions use Playwright with an installed browser:
+
+```bash
+cd frontend
+npm run test:browser
+# For a browser outside the default macOS Google Chrome location:
+BROWSER_EXECUTABLE=/path/to/chrome npm run test:browser
+```
+
+The browser tests create a temporary localhost Vite server and isolated browser
+contexts. Media capture, audio hardware, WebSocket transcription, and API
+responses are mocked; no microphone/screen permission or user profile is used.
+They exercise both themes, parameters, synthetic PCM transmission, stopping,
+connection failure, retry, late socket events, and audio initialization failure.
+Set `BROWSER_EVIDENCE_DIR=/path/to/output` to save the three test screenshots.
