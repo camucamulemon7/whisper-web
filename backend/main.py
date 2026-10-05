@@ -139,6 +139,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error(f"Error receiving message: {e}")
                 break
             
+            if message.get("type") == "websocket.disconnect":
+                break
+
             if "text" in message:
                 # テキストメッセージ（設定など）
                 data = json.loads(message["text"])
@@ -156,44 +159,40 @@ async def websocket_endpoint(websocket: WebSocket):
                     # バックエンドの変更が要求された場合
                     new_backend = data.get("backend")
                     if new_backend and new_backend != backend_type:
-                        # 古いプロセッサーをクリーンアップ
-                        await processor.cleanup()
-                        
-                        # 新しいプロセッサーを作成
-                        if new_backend == 'openai-whisper':
-                            if OpenAIWhisperProcessor is None:
-                                logger.error("OpenAI Whisper is not installed. Please enable it in requirements.txt and rebuild.")
-                                await websocket.send_json({
-                                    "error": "OpenAI Whisper is not installed",
-                                    "message": "Please enable openai-whisper in requirements.txt and rebuild the Docker image"
-                                })
-                                continue
-                            processor = OpenAIWhisperProcessor()
-                            backend_type = 'openai-whisper'
-                            logger.info("Switched to OpenAI Whisper backend")
-                        elif new_backend == 'whisperx':
-                            if WhisperXProcessor is None:
-                                logger.error("WhisperX is not installed. Please enable it in requirements.txt and rebuild.")
-                                await websocket.send_json({
-                                    "error": "WhisperX is not installed",
-                                    "message": "Please enable whisperx in requirements.txt and rebuild the Docker image"
-                                })
-                                continue
-                            # WhisperXのサポート
-                            try:
-                                processor = WhisperXProcessor()
-                                backend_type = 'whisperx'
-                                logger.info("Switched to WhisperX backend")
-                            except Exception as e:
-                                logger.error(f"Failed to initialize WhisperX: {e}")
-                                logger.warning("Falling back to faster-whisper")
-                                processor = TranscriptionProcessor()
-                                backend_type = 'faster-whisper'
-                        else:
-                            processor = TranscriptionProcessor()
-                            backend_type = 'faster-whisper'
-                            logger.info("Switched to Faster Whisper backend")
-                        
+                        # 現行プロセッサーは切替先の初期化成功まで保持する
+                        processor_class = {
+                            'openai-whisper': OpenAIWhisperProcessor,
+                            'whisperx': WhisperXProcessor,
+                        }.get(new_backend, TranscriptionProcessor)
+                        if processor_class is None:
+                            display_name = 'OpenAI Whisper' if new_backend == 'openai-whisper' else 'WhisperX'
+                            package_name = 'openai-whisper' if new_backend == 'openai-whisper' else 'whisperx'
+                            await websocket.send_json({
+                                "error": f"{display_name} is not installed",
+                                "message": f"Please enable {package_name} in requirements.txt and rebuild the Docker image"
+                            })
+                            continue
+
+                        try:
+                            replacement = processor_class()
+                        except Exception as e:
+                            logger.error(f"Failed to initialize {new_backend}: {e}")
+                            await websocket.send_json({
+                                "error": f"Failed to initialize {new_backend}",
+                                "message": "The current transcription backend is still active"
+                            })
+                            continue
+
+                        try:
+                            await processor.cleanup()
+                        except BaseException:
+                            # 切替が完了しなければ新しいワーカースレッドも解放する
+                            await replacement.cleanup()
+                            raise
+                        processor = replacement
+                        backend_type = new_backend if new_backend in ('openai-whisper', 'whisperx') else 'faster-whisper'
+                        logger.info(f"Switched to {backend_type} backend")
+
                         # セッション情報を更新
                         if websocket in session_map:
                             session_map[websocket].backend = backend_type
